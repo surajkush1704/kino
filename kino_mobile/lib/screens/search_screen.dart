@@ -17,7 +17,7 @@ class _SearchScreenState extends State<SearchScreen> {
   bool _isLoading = false;
   List<dynamic> _searchResults = [];
 
-  final String _baseUrl = "http://127.0.0.1:8000";
+  final String _baseUrl = "http://10.238.129.173:8000";
 
   @override
   void dispose() {

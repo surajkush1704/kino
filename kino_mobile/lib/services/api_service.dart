@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 class ApiService {
   // 127.0.0.1 for real device via USB + 'adb reverse'
   // 10.0.2.2 if using Android Emulator
-  static const String baseUrl = "http://127.0.0.1:8000/api/v1";
+  static const String baseUrl = "http://10.238.129.173:8000/api/v1";
 
   static Future<List<dynamic>> getTrendingMovies() async {
     try {

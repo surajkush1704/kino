@@ -15,7 +15,7 @@ class VibeCheckScreen extends StatefulWidget {
 class _VibeCheckScreenState extends State<VibeCheckScreen> {
   final TextEditingController _searchController = TextEditingController();
   final CardSwiperController _swiperController = CardSwiperController();
-  
+
   bool _isLoading = false;
   bool _isResultView = false;
   List<dynamic> _searchResults = [];
@@ -33,7 +33,7 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
     "Give me motivational films",
   ];
 
-  final String _baseUrl = "http://127.0.0.1:8000";
+  final String _baseUrl = "http://10.238.129.173:8000";
 
   @override
   void initState() {
@@ -61,12 +61,12 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
     if (query.trim().isEmpty) return;
     final prefs = await SharedPreferences.getInstance();
     List<String> history = prefs.getStringList('recent_searches') ?? [];
-    
+
     // Remove if exists to move to top, limit to 6
     history.remove(query);
     history.insert(0, query);
     if (history.length > 6) history = history.sublist(0, 6);
-    
+
     await prefs.setStringList('recent_searches', history);
     setState(() => _recentSearches = history);
   }
@@ -108,36 +108,36 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
           _isLoading = false;
           _isResultView = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Connection Lost: $e")),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Connection Lost: $e")));
       }
     }
   }
 
-//   void _playTrailer(String? trailerKey) {
-//     if (trailerKey == null || trailerKey.isEmpty) {
-//       ScaffoldMessenger.of(context).showSnackBar(
-//         const SnackBar(content: Text("Trailer not available for this movie.")),
-//       );
-//       return;
-//     }
-// 
-//     showDialog(
-//       context: context,
-//       builder: (context) => Dialog(
-//         backgroundColor: Colors.black,
-//         insetPadding: const EdgeInsets.all(10),
-//         child: YoutubePlayer(
-//           controller: YoutubePlayerController(
-//             initialVideoId: trailerKey,
-//             flags: const YoutubePlayerFlags(autoPlay: true, mute: false),
-//           ),
-//           showVideoProgressIndicator: true,
-//         ),
-//       ),
-//     );
-//   }
+  //   void _playTrailer(String? trailerKey) {
+  //     if (trailerKey == null || trailerKey.isEmpty) {
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         const SnackBar(content: Text("Trailer not available for this movie.")),
+  //       );
+  //       return;
+  //     }
+  //
+  //     showDialog(
+  //       context: context,
+  //       builder: (context) => Dialog(
+  //         backgroundColor: Colors.black,
+  //         insetPadding: const EdgeInsets.all(10),
+  //         child: YoutubePlayer(
+  //           controller: YoutubePlayerController(
+  //             initialVideoId: trailerKey,
+  //             flags: const YoutubePlayerFlags(autoPlay: true, mute: false),
+  //           ),
+  //           showVideoProgressIndicator: true,
+  //         ),
+  //       ),
+  //     );
+  //   }
 
   @override
   Widget build(BuildContext context) {
@@ -180,7 +180,7 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
               "Describe your mood or pick a vibe below",
               style: TextStyle(color: Colors.white30, fontSize: 14),
             ),
-            
+
             const SizedBox(height: 25),
 
             // SEARCH BAR AT TOP
@@ -194,9 +194,16 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
                 hintStyle: const TextStyle(color: Colors.white12),
                 filled: true,
                 fillColor: Colors.white.withOpacity(0.05),
-                prefixIcon: const Icon(Icons.search, color: Colors.purpleAccent),
+                prefixIcon: const Icon(
+                  Icons.search,
+                  color: Colors.purpleAccent,
+                ),
                 suffixIcon: IconButton(
-                  icon: const Icon(Icons.arrow_circle_right_rounded, color: Colors.purpleAccent, size: 30),
+                  icon: const Icon(
+                    Icons.arrow_circle_right_rounded,
+                    color: Colors.purpleAccent,
+                    size: 30,
+                  ),
                   onPressed: () => _performVibeSearch(_searchController.text),
                 ),
                 border: OutlineInputBorder(
@@ -215,7 +222,11 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
               const SizedBox(height: 25),
               const Text(
                 "Recent",
-                style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold, fontSize: 14),
+                style: TextStyle(
+                  color: Colors.white54,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
               ),
               const SizedBox(height: 12),
               SizedBox(
@@ -223,8 +234,10 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   itemCount: _recentSearches.length,
-                  separatorBuilder: (context, index) => const SizedBox(width: 10),
-                  itemBuilder: (context, index) => _buildHistoryBox(_recentSearches[index]),
+                  separatorBuilder: (context, index) =>
+                      const SizedBox(width: 10),
+                  itemBuilder: (context, index) =>
+                      _buildHistoryBox(_recentSearches[index]),
                 ),
               ),
             ],
@@ -234,7 +247,11 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
             // VIBE SUGGESTIONS
             const Text(
               "Suggested Vibes",
-              style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold, fontSize: 14),
+              style: TextStyle(
+                color: Colors.white54,
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+              ),
             ),
             const SizedBox(height: 15),
             ListView.separated(
@@ -242,7 +259,8 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
               physics: const NeverScrollableScrollPhysics(),
               itemCount: _vibeSuggestions.length,
               separatorBuilder: (context, index) => const SizedBox(height: 12),
-              itemBuilder: (context, index) => _buildSuggestionCard(_vibeSuggestions[index]),
+              itemBuilder: (context, index) =>
+                  _buildSuggestionCard(_vibeSuggestions[index]),
             ),
             const SizedBox(height: 30),
           ],
@@ -273,7 +291,11 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
         ),
         child: Row(
           children: [
-            const Icon(Icons.auto_awesome_motion_rounded, color: Colors.purpleAccent, size: 20),
+            const Icon(
+              Icons.auto_awesome_motion_rounded,
+              color: Colors.purpleAccent,
+              size: 20,
+            ),
             const SizedBox(width: 15),
             Expanded(
               child: Text(
@@ -285,7 +307,10 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
                 ),
               ),
             ),
-            Icon(Icons.chevron_right_rounded, color: Colors.white.withOpacity(0.2)),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: Colors.white.withOpacity(0.2),
+            ),
           ],
         ),
       ),
@@ -328,8 +353,11 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
                 height: 150,
                 width: 150,
                 fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => 
-                  const Icon(Icons.pets, color: Colors.purpleAccent, size: 80),
+                errorBuilder: (context, error, stackTrace) => const Icon(
+                  Icons.pets,
+                  color: Colors.purpleAccent,
+                  size: 80,
+                ),
               ),
             ),
             const SizedBox(height: 20),
@@ -352,10 +380,16 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Text("No movies found for that vibe.", style: TextStyle(color: Colors.white54)),
+            const Text(
+              "No movies found for that vibe.",
+              style: TextStyle(color: Colors.white54),
+            ),
             TextButton(
               onPressed: () => setState(() => _isResultView = false),
-              child: const Text("Try Again", style: TextStyle(color: Colors.purpleAccent)),
+              child: const Text(
+                "Try Again",
+                style: TextStyle(color: Colors.purpleAccent),
+              ),
             ),
           ],
         ),
@@ -371,7 +405,9 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
           right: 0,
           child: Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 480), // Adjusted size
+              constraints: const BoxConstraints(
+                maxHeight: 480,
+              ), // Adjusted size
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 25),
                 child: AspectRatio(
@@ -381,7 +417,10 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
                     cardsCount: _searchResults.length,
                     numberOfCardsDisplayed: 3,
                     isLoop: false,
-                    padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 0),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 0,
+                      vertical: 0,
+                    ),
                     onSwipe: (int prev, int? curr, CardSwiperDirection dir) {
                       if (dir == CardSwiperDirection.right) {
                         _showStatus("Saved to Watchlist 💚");
@@ -390,7 +429,8 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
                       }
                       return true;
                     },
-                    cardBuilder: (context, index, x, y) => _buildMovieCard(_searchResults[index]),
+                    cardBuilder: (context, index, x, y) =>
+                        _buildMovieCard(_searchResults[index]),
                   ),
                 ),
               ),
@@ -399,24 +439,25 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
         ),
 
         // NEW: Vibe Insight Panel at the bottom
-        Positioned(
-          bottom: 30,
-          left: 20,
-          right: 20,
-          child: _buildVibeInsight(),
-        ),
+        Positioned(bottom: 30, left: 20, right: 20, child: _buildVibeInsight()),
 
         // UI Overlays
         SafeArea(
           child: Column(
             children: [
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 10,
+                ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     IconButton(
-                      icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
+                      icon: const Icon(
+                        Icons.arrow_back_ios,
+                        color: Colors.white,
+                      ),
                       onPressed: () {
                         setState(() {
                           _isResultView = false;
@@ -425,8 +466,9 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
                       },
                     ),
                     IconButton(
-                        icon: const Icon(Icons.undo, color: Colors.white60),
-                        onPressed: () => _swiperController.undo()),
+                      icon: const Icon(Icons.undo, color: Colors.white60),
+                      onPressed: () => _swiperController.undo(),
+                    ),
                   ],
                 ),
               ),
@@ -440,7 +482,8 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
   Widget _buildVibeInsight() {
     final mood = _vibeMetadata['mood'] ?? 'Tuned';
     final tone = _vibeMetadata['tone'] ?? 'Balanced';
-    final keywords = (_vibeMetadata['keywords'] as List?)?.take(3).toList() ?? [];
+    final keywords =
+        (_vibeMetadata['keywords'] as List?)?.take(3).toList() ?? [];
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -454,7 +497,11 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.psychology_outlined, color: Colors.purpleAccent, size: 20),
+              const Icon(
+                Icons.psychology_outlined,
+                color: Colors.purpleAccent,
+                size: 20,
+              ),
               const SizedBox(width: 8),
               Text(
                 "Vibe Insight",
@@ -475,7 +522,10 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
               _buildInsightTag("Mood: $mood", Colors.blueAccent),
               _buildInsightTag("Tone: $tone", Colors.orangeAccent),
               for (var kw in keywords)
-                _buildInsightTag(kw.toString(), Colors.purpleAccent.withOpacity(0.6)),
+                _buildInsightTag(
+                  kw.toString(),
+                  Colors.purpleAccent.withOpacity(0.6),
+                ),
             ],
           ),
         ],
@@ -493,7 +543,11 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
       ),
       child: Text(
         text,
-        style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600),
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
   }
@@ -523,7 +577,7 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
               color: Colors.black.withOpacity(0.5),
               blurRadius: 20,
               offset: const Offset(0, 10),
-            )
+            ),
           ],
         ),
         child: ClipRRect(
@@ -573,8 +627,12 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
                         const Icon(Icons.star, color: Colors.amber, size: 16),
                         const SizedBox(width: 4),
                         Text(
-                          (movie['vote_average'] as num?)?.toStringAsFixed(1) ?? 'N/A',
-                          style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.bold),
+                          (movie['vote_average'] as num?)?.toStringAsFixed(1) ??
+                              'N/A',
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         const SizedBox(width: 15),
                         Text(
@@ -583,14 +641,20 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
                         ),
                         const SizedBox(width: 15),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
                             border: Border.all(color: Colors.white30),
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(
                             movie['rating'] ?? 'PG',
-                            style: const TextStyle(color: Colors.white70, fontSize: 10),
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 10,
+                            ),
                           ),
                         ),
                       ],
@@ -601,14 +665,17 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
                         _buildIntegratedButton(
-                          Icons.close, 
-                          Colors.redAccent, 
-                          () => _swiperController.swipe(CardSwiperDirection.left)
+                          Icons.close,
+                          Colors.redAccent,
+                          () =>
+                              _swiperController.swipe(CardSwiperDirection.left),
                         ),
                         _buildIntegratedButton(
-                          Icons.favorite, 
-                          Colors.greenAccent, 
-                          () => _swiperController.swipe(CardSwiperDirection.right)
+                          Icons.favorite,
+                          Colors.greenAccent,
+                          () => _swiperController.swipe(
+                            CardSwiperDirection.right,
+                          ),
                         ),
                       ],
                     ),
@@ -622,7 +689,11 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
     );
   }
 
-  Widget _buildIntegratedButton(IconData icon, Color color, VoidCallback onTap) {
+  Widget _buildIntegratedButton(
+    IconData icon,
+    Color color,
+    VoidCallback onTap,
+  ) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -656,10 +727,7 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
         gradient: RadialGradient(
           center: Alignment(-0.8, -0.8),
           radius: 1.5,
-          colors: [
-            Color(0xFF2A1639),
-            Color(0xFF121212),
-          ],
+          colors: [Color(0xFF2A1639), Color(0xFF121212)],
         ),
       ),
     );

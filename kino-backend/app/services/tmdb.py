@@ -3,6 +3,9 @@ import asyncio
 from typing import Optional, List, Dict, Any
 from app.core.config import settings
 
+# Errors that are worth retrying (network hiccups, transient server errors)
+_RETRIABLE = (httpx.ConnectError, httpx.TimeoutException, httpx.RemoteProtocolError)
+
 class TMDBService:
     # ---------------------------------------------------------
     # MAKE SURE THIS LINE IS EXACTLY AS SHOWN BELOW:
@@ -10,15 +13,40 @@ class TMDBService:
     # ---------------------------------------------------------
     
     @staticmethod
-    async def _fetch(endpoint: str, params: Optional[dict] = None):
+    async def _fetch(endpoint: str, params: Optional[dict] = None, _retries: int = 3):
+        """Fetch from TMDB with exponential backoff retry for network errors and 5xx/429."""
         if params is None: params = {}
         params["api_key"] = settings.TMDB_API_KEY
-        async with httpx.AsyncClient() as client:
-            # This combines the BASE_URL with the endpoint
-            full_url = f"{TMDBService.BASE_URL}{endpoint}"
-            response = await client.get(full_url, params=params)
-            response.raise_for_status()
-            return response.json()
+        full_url = f"{TMDBService.BASE_URL}{endpoint}"
+
+        last_exc: Exception = RuntimeError("Unknown error")
+        for attempt in range(_retries):
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    response = await client.get(full_url, params=params)
+
+                    # Retry on 429 (TMDB rate limit) and 5xx server errors
+                    if response.status_code == 429 or response.status_code >= 500:
+                        wait = 2 ** attempt  # 1s, 2s, 4s
+                        print(f"[TMDB RETRY] HTTP {response.status_code} on {endpoint} — retrying in {wait}s (attempt {attempt + 1}/{_retries})")
+                        await asyncio.sleep(wait)
+                        last_exc = httpx.HTTPStatusError(
+                            f"HTTP {response.status_code}", request=response.request, response=response
+                        )
+                        continue
+
+                    response.raise_for_status()
+                    return response.json()
+
+            except _RETRIABLE as e:
+                wait = 2 ** attempt  # 1s, 2s, 4s
+                print(f"[TMDB RETRY] {type(e).__name__} on {endpoint} — retrying in {wait}s (attempt {attempt + 1}/{_retries})")
+                last_exc = e
+                await asyncio.sleep(wait)
+
+        # All retries exhausted
+        print(f"[TMDB FAILED] {endpoint} gave up after {_retries} attempts: {last_exc}")
+        raise last_exc
 
     @staticmethod
     def _normalize(item: dict, custom_tag: str = "Trending") -> Dict[str, Any]:

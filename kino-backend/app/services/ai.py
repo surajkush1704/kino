@@ -1,4 +1,4 @@
-import google.generativeai as genai
+from google import genai
 import json
 import re
 from app.core.config import settings
@@ -23,10 +23,8 @@ class AIService:
             print("\n[ERROR] GEMINI_API_KEY is not set in .env!\n")
             return {"is_keyword_search": True, "corrected_query": user_query}
 
-        genai.configure(api_key=api_key)
-        
-        # Using the latest Gemini 2.0 Flash model
-        model = genai.GenerativeModel('gemini-2.0-flash')
+        # New google.genai SDK: create a client instance (not global configure)
+        client = genai.Client(api_key=api_key)
 
         # New Prompt: Multi-Category Example-Driven Algorithm
         prompt = f"""
@@ -112,9 +110,12 @@ class AIService:
         """
 
         try:
-            # Generation call
-            response = await model.generate_content_async(prompt)
-            
+            # New google.genai SDK: async generate_content via client.aio
+            response = await client.aio.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt,
+            )
+
             # Cleaning and parsing
             raw_text = response.text.strip()
             clean_json = AIService._extract_json(raw_text)
@@ -125,7 +126,12 @@ class AIService:
             return data
 
         except Exception as e:
-            print(f"\n[AI CRASH]: {e}")
+            err_str = str(e)
+            # 429 = Gemini API rate limit / quota exceeded
+            if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str or "quota" in err_str.lower():
+                print(f"\n[AI RATE LIMIT] Gemini quota hit — using fallback vibe data. ({e})\n")
+            else:
+                print(f"\n[AI CRASH]: {e}")
             # Robust Fallback for production stability
             return {
                 "is_keyword_search": False, 

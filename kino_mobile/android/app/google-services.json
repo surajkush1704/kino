@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "364338584216",
+    "project_id": "kino-96bb3",
+    "storage_bucket": "kino-96bb3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:364338584216:android:f1cfe38eae8ebec573ceed",
+        "android_client_info": {
+          "package_name": "com.example.kino_mobile"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "364338584216-7bmm5ja2o6vkt1i8gjo3jov363ohp723.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.kino_mobile",
+            "certificate_hash": "dcc1bdead1e571ff0a4add86eb087c86108302fb"
+          }
+        },
+        {
+          "client_id": "364338584216-3kmud33abf3n6934l443maqbgnmk40sd.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCNSsZwrHfS7tf0rZK66RqQnY7taTJC-Wo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "364338584216-3kmud33abf3n6934l443maqbgnmk40sd.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "364338584216-21pvcs2n15jd0oek1ali2564a74108jh.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.kinoMobile"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -21,7 +21,14 @@ class AIService:
 
         if not api_key:
             print("\n[ERROR] GEMINI_API_KEY is not set in .env!\n")
-            return {"is_keyword_search": True, "corrected_query": user_query}
+            return {
+                "mood": "Mixed",
+                "genres": [],
+                "tone": "Balanced",
+                "rating": "PG-13",
+                "keywords": [],
+                "recommended_sorting": "popular",
+            }
 
         # New google.genai SDK: create a client instance (not global configure)
         client = genai.Client(api_key=api_key)
@@ -134,11 +141,10 @@ class AIService:
                 print(f"\n[AI CRASH]: {e}")
             # Robust Fallback for production stability
             return {
-                "is_keyword_search": False, 
-                "corrected_query": user_query, 
-                "genre_id": None, 
-                "year_start": None, 
-                "year_end": None,
-                "language_filter": "en|hi",
-                "vibe_description": "Fallback mixed discovery"
+                "mood": "Mixed",
+                "genres": [],
+                "tone": "Balanced",
+                "rating": "PG-13",
+                "keywords": [],
+                "recommended_sorting": "popular",
             }

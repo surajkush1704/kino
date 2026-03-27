@@ -1,0 +1,48 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "kino_mobile",
+            "cwd": "kino_mobile",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "kino_mobile (profile mode)",
+            "cwd": "kino_mobile",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "kino_mobile (release mode)",
+            "cwd": "kino_mobile",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release"
+        },
+        {
+            "name": "temp_app",
+            "cwd": "kino_mobile\\temp_app",
+            "request": "launch",
+            "type": "dart"
+        },
+        {
+            "name": "temp_app (profile mode)",
+            "cwd": "kino_mobile\\temp_app",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "profile"
+        },
+        {
+            "name": "temp_app (release mode)",
+            "cwd": "kino_mobile\\temp_app",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "release"
+        }
+    ]
+}

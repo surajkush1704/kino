@@ -4,12 +4,18 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:youtube_player_flutter/youtube_player_flutter.dart';
 import 'services/api_service.dart'; // To get baseUrl
+import 'services/storage_service.dart';
 import 'package:url_launcher/url_launcher.dart'; // Add this to your pubspec.yaml
 
 class MovieDetailScreen extends StatefulWidget {
   final dynamic movie;
+  final int initialTabIndex;
 
-  const MovieDetailScreen({super.key, required this.movie});
+  const MovieDetailScreen({
+    super.key,
+    required this.movie,
+    this.initialTabIndex = 0,
+  });
 
   @override
   State<MovieDetailScreen> createState() => _MovieDetailScreenState();
@@ -18,7 +24,8 @@ class MovieDetailScreen extends StatefulWidget {
 class _MovieDetailScreenState extends State<MovieDetailScreen> {
   Map<String, dynamic>? _fullDetails;
   bool _isLoading = true;
-  final int _selectedIndex = 0; // Track navigation bar state
+  late final int _selectedIndex;
+  final StorageService _storageService = StorageService();
 
   // --- STATE VARIABLES FOR BUTTONS ---
   bool _isInWatchlist = false;
@@ -27,7 +34,90 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
   @override
   void initState() {
     super.initState();
+    _selectedIndex = widget.initialTabIndex;
+    _loadSavedStatuses();
     _fetchFullDetails();
+  }
+
+  int? _movieIdFrom(dynamic movie) {
+    final dynamic id = movie is Map ? movie['id'] : null;
+    if (id is int) return id;
+    if (id is String) return int.tryParse(id);
+    return null;
+  }
+
+  Map<String, dynamic> _movieToStorageEntry() {
+    final Map<String, dynamic> baseMovie = Map<String, dynamic>.from(
+      (widget.movie is Map) ? widget.movie as Map : <String, dynamic>{},
+    );
+    final Map<String, dynamic> fullDetails =
+        _fullDetails == null
+            ? <String, dynamic>{}
+            : Map<String, dynamic>.from(_fullDetails!);
+
+    return <String, dynamic>{
+      ...baseMovie,
+      ...fullDetails,
+      'id': _movieIdFrom(widget.movie) ?? baseMovie['id'],
+      'title': fullDetails['title'] ?? baseMovie['title'],
+      'poster_path': fullDetails['poster_path'] ?? baseMovie['poster_path'],
+      'overview': fullDetails['overview'] ?? baseMovie['overview'],
+      'release_date': fullDetails['release_date'] ?? baseMovie['release_date'],
+      'vote_average': fullDetails['vote_average'] ?? baseMovie['vote_average'],
+      'genres': fullDetails['genres'] ?? baseMovie['genres'] ?? <dynamic>[],
+    };
+  }
+
+  Future<void> _loadSavedStatuses() async {
+    final int? movieId = _movieIdFrom(widget.movie);
+    if (movieId == null) return;
+
+    try {
+      final results = await Future.wait<bool>([
+        _storageService.isInWatchlist(movieId),
+        _storageService.isWatched(movieId),
+      ]);
+
+      if (!mounted) return;
+      setState(() {
+        _isInWatchlist = results[0];
+        _isWatched = results[1];
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isInWatchlist = false;
+        _isWatched = false;
+      });
+    }
+  }
+
+  Future<void> _toggleWatchlist() async {
+    final int? movieId = _movieIdFrom(widget.movie);
+    if (movieId == null) return;
+
+    if (_isInWatchlist) {
+      await _storageService.removeFromWatchlist(movieId);
+    } else {
+      await _storageService.addToWatchlist(_movieToStorageEntry());
+    }
+
+    if (!mounted) return;
+    setState(() => _isInWatchlist = !_isInWatchlist);
+  }
+
+  Future<void> _toggleWatched() async {
+    final int? movieId = _movieIdFrom(widget.movie);
+    if (movieId == null) return;
+
+    if (_isWatched) {
+      await _storageService.removeFromWatched(movieId);
+    } else {
+      await _storageService.addToWatched(_movieToStorageEntry());
+    }
+
+    if (!mounted) return;
+    setState(() => _isWatched = !_isWatched);
   }
 
   Future<void> _fetchFullDetails() async {
@@ -185,6 +275,11 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                   expandedHeight: 550,
                   backgroundColor: const Color(0xFF121212),
                   pinned: true,
+                  leading: IconButton(
+                    icon: const Icon(Icons.arrow_back_ios_new,
+                        color: Colors.white, size: 22),
+                    onPressed: () => Navigator.pop(context),
+                  ),
                   flexibleSpace: FlexibleSpaceBar(
                     background: Stack(
                       children: [
@@ -303,14 +398,14 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                           children: [
                             Expanded(
                               child: ElevatedButton.icon(
-                                onPressed: () {
-                                  setState(
-                                    () => _isInWatchlist = !_isInWatchlist,
-                                  );
-                                  ScaffoldMessenger.of(
-                                    context,
-                                  ).clearSnackBars();
-                                  ScaffoldMessenger.of(context).showSnackBar(
+                                onPressed: () async {
+                                  try {
+                                    await _toggleWatchlist();
+                                    if (!mounted) return;
+                                    ScaffoldMessenger.of(
+                                      context,
+                                    ).clearSnackBars();
+                                    ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
                                       content: Text(
                                         _isInWatchlist
@@ -322,6 +417,16 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                                       ),
                                     ),
                                   );
+                                  } catch (_) {
+                                    if (!mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          "Could not update watchlist",
+                                        ),
+                                      ),
+                                    );
+                                  }
                                 },
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.redAccent,
@@ -331,11 +436,11 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                                   ),
                                 ),
                                 icon: Icon(
-                                  _isInWatchlist ? Icons.check : Icons.add,
+                                  _isInWatchlist ? Icons.remove : Icons.add,
                                 ),
                                 label: Text(
                                   _isInWatchlist
-                                      ? "In Watchlist"
+                                      ? "Remove from Watchlist"
                                       : "Add to Watchlist",
                                 ),
                               ),
@@ -343,28 +448,36 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                             const SizedBox(width: 10),
                             Expanded(
                               child: OutlinedButton.icon(
-                                onPressed: () {
-                                  setState(() {
-                                    _isWatched = !_isWatched;
-                                    if (_isWatched && _isInWatchlist) {
-                                      _isInWatchlist = false;
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).clearSnackBars();
-                                      ScaffoldMessenger.of(
-                                        context,
-                                      ).showSnackBar(
-                                        const SnackBar(
-                                          content: Text(
-                                            "Marked as Watched (Removed from Watchlist)",
-                                          ),
-                                          duration: Duration(
-                                            milliseconds: 1000,
-                                          ),
+                                onPressed: () async {
+                                  final bool wasWatched = _isWatched;
+                                  try {
+                                    await _toggleWatched();
+                                    if (!mounted) return;
+                                    ScaffoldMessenger.of(
+                                      context,
+                                    ).clearSnackBars();
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          wasWatched
+                                              ? "Marked as Unwatched"
+                                              : "Marked as Watched",
                                         ),
-                                      );
-                                    }
-                                  });
+                                        duration: const Duration(
+                                          milliseconds: 700,
+                                        ),
+                                      ),
+                                    );
+                                  } catch (_) {
+                                    if (!mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text(
+                                          "Could not update watched list",
+                                        ),
+                                      ),
+                                    );
+                                  }
                                 },
                                 style: OutlinedButton.styleFrom(
                                   backgroundColor: _isWatched
@@ -384,7 +497,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                                   _isWatched ? Icons.check_circle : Icons.check,
                                 ),
                                 label: Text(
-                                  _isWatched ? "Watched" : "Mark Watched",
+                                  _isWatched
+                                      ? "Mark Unwatched"
+                                      : "Mark Watched",
                                 ),
                               ),
                             ),
@@ -671,17 +786,17 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
               showSelectedLabels: true,
               showUnselectedLabels: true,
               type: BottomNavigationBarType.fixed,
-              items: const [
-                BottomNavigationBarItem(
+              items: [
+                const BottomNavigationBarItem(
                   icon: Icon(Icons.home_filled),
                   label: 'Home',
                 ),
-                BottomNavigationBarItem(
+                const BottomNavigationBarItem(
                   icon: Icon(Icons.search_rounded),
                   label: 'Search',
                 ),
-                BottomNavigationBarItem(
-                  icon: Icon(Icons.video_library_rounded),
+                const BottomNavigationBarItem(
+                  icon: Icon(Icons.favorite),
                   label: 'Library',
                 ),
               ],

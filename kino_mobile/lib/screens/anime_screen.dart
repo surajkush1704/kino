@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:ui';
 import '../services/api_service.dart';
 import '../movie_detail_screen.dart';
 
@@ -60,7 +61,7 @@ class _AnimeScreenState extends State<AnimeScreen> {
   Widget _buildHeader() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 60, 20, 24),
+      padding: const EdgeInsets.fromLTRB(12, 52, 20, 24),
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -75,12 +76,16 @@ class _AnimeScreenState extends State<AnimeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Decorative icon row
           Row(
-            children: const [
-              Text('🎌', style: TextStyle(fontSize: 28)),
-              SizedBox(width: 10),
-              Text(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new,
+                    color: Colors.white, size: 22),
+                onPressed: () => Navigator.pop(context),
+              ),
+              const Text('🎌', style: TextStyle(fontSize: 28)),
+              const SizedBox(width: 10),
+              const Text(
                 'Anime',
                 style: TextStyle(
                   color: Colors.white,
@@ -175,10 +180,49 @@ class _AnimeScreenState extends State<AnimeScreen> {
   // Build
   // -------------------------------------------------------------------------
 
+  Widget _buildBottomNav() {
+    const navItems = [
+      BottomNavigationBarItem(
+        icon: Icon(Icons.home_filled),
+        label: 'Home',
+      ),
+      BottomNavigationBarItem(
+        icon: Icon(Icons.search_rounded),
+        label: 'Search',
+      ),
+      BottomNavigationBarItem(
+        icon: Icon(Icons.favorite),
+        label: 'Watchlist',
+      ),
+    ];
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+        child: Container(
+          color: const Color(0xFF121212).withOpacity(0.7),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: BottomNavigationBar(
+            elevation: 0,
+            backgroundColor: Colors.transparent,
+            currentIndex: 0,
+            onTap: (i) => Navigator.pop(context, i),
+            selectedItemColor: Colors.purpleAccent,
+            unselectedItemColor: Colors.white30,
+            showSelectedLabels: true,
+            showUnselectedLabels: true,
+            type: BottomNavigationBarType.fixed,
+            items: navItems,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0D0D1A),
+      bottomNavigationBar: _buildBottomNav(),
       body: RefreshIndicator(
         onRefresh: _refresh,
         color: const Color(0xFFAD1457),
@@ -271,14 +315,17 @@ class _AnimeMovieCard extends StatelessWidget {
     final int movieId = (movie['id'] as int?) ?? 0;
 
     return GestureDetector(
-      onTap: () {
+      onTap: () async {
         if (movieId == 0) return;
-        Navigator.push(
+        final tab = await Navigator.push<int>(
           context,
           MaterialPageRoute(
             builder: (_) => MovieDetailScreen(movie: movie),
           ),
         );
+        if (tab != null && context.mounted) {
+          Navigator.pop(context, tab);
+        }
       },
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),

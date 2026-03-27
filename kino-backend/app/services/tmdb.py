@@ -56,14 +56,86 @@ class TMDBService:
             "overview": item.get("overview", "No description available."),
             "vote_average": item.get("vote_average", 0.0),
             "release_date": item.get("release_date", "Unknown"),
-            "poster_path": item.get("poster_path"), 
-            "tags": [custom_tag]
+            "poster_path": item.get("poster_path"),
+            "tags": [custom_tag],
+            "original_language": item.get("original_language"),
+            "genre_ids": item.get("genre_ids", []),
+        }
+
+    @staticmethod
+    def _normalize_tv(item: dict, custom_tag: str = "TV Result") -> Dict[str, Any]:
+        return {
+            "id": item.get("id"),
+            "title": item.get("name", "Unknown"),
+            "overview": item.get("overview", "No description available."),
+            "vote_average": item.get("vote_average", 0.0),
+            "release_date": item.get("first_air_date", "Unknown"),
+            "poster_path": item.get("poster_path"),
+            "tags": [custom_tag],
+            "original_language": item.get("original_language"),
+            "genre_ids": item.get("genre_ids", []),
+            "media_type": "tv",
+        }
+
+    @staticmethod
+    def _normalize_anime(item: dict) -> Dict[str, Any]:
+        images = item.get("images", {}).get("jpg", {})
+        return {
+            "id": item.get("mal_id"),
+            "title": item.get("title", "Unknown"),
+            "overview": item.get("synopsis", "No description available."),
+            "vote_average": item.get("score", 0.0) or 0.0,
+            "release_date": item.get("aired", {}).get("from", "Unknown"),
+            "poster_path": images.get("large_image_url") or images.get("image_url"),
+            "tags": ["Anime Search"],
+            "original_language": "ja",
+            "genre_ids": [],
+            "media_type": "anime",
+            "genres": [
+                genre.get("name")
+                for genre in item.get("genres", [])
+                if genre.get("name")
+            ],
         }
 
     @staticmethod
     async def get_trending_movies():
         data = await TMDBService._fetch("/trending/movie/week")
         return [TMDBService._normalize(item) for item in data.get("results", [])]
+
+    @staticmethod
+    async def get_classic_movies():
+        try:
+            data = await TMDBService._fetch("/discover/movie", {
+                "vote_average.gte": 8.0,
+                "vote_count.gte": 10000,
+                "sort_by": "vote_average.desc",
+                "include_adult": "false",
+            })
+            return [
+                TMDBService._normalize(item, "Classic")
+                for item in data.get("results", [])[:20]
+            ]
+        except Exception as e:
+            print(f"[TMDB CLASSICS ERROR] {e}")
+            return []
+
+    @staticmethod
+    async def get_for_you_movies():
+        try:
+            data = await TMDBService._fetch("/discover/movie", {
+                "with_original_language": "hi|ta|te|ml|kn",
+                "sort_by": "popularity.desc",
+                "vote_count.gte": 100,
+                "include_adult": "false",
+            })
+            return [
+                TMDBService._normalize(item, "For You")
+                for item in data.get("results", [])[:20]
+            ]
+        except Exception as e:
+            print(f"[TMDB FOR YOU ERROR] {e}")
+            return []
 
     @staticmethod
     async def get_regional_mix():
@@ -203,6 +275,137 @@ class TMDBService:
         results = data.get("results", [])
         normalized = [TMDBService._normalize(item, "Search Result") for item in results]
         return await TMDBService._enhance_results(normalized)
+
+    @staticmethod
+    def _apply_decade(params: Dict[str, Any], decade: Optional[str], content_type: str):
+        if not decade:
+            return
+
+        decade_key = decade.strip().lower()
+        prefix = "first_air_date" if content_type == "tv" else "primary_release_date"
+
+        mapping = {
+            "classic": (None, "1969-12-31"),
+            "70s": ("1970-01-01", "1979-12-31"),
+            "80s": ("1980-01-01", "1989-12-31"),
+            "90s": ("1990-01-01", "1999-12-31"),
+            "2000s": ("2000-01-01", "2009-12-31"),
+            "2010s": ("2010-01-01", "2019-12-31"),
+            "2020s": ("2020-01-01", "2023-12-31"),
+            "latest": ("2024-01-01", None),
+        }
+        gte, lte = mapping.get(decade_key, (None, None))
+        if gte:
+            params[f"{prefix}.gte"] = gte
+        if lte:
+            params[f"{prefix}.lte"] = lte
+
+    @staticmethod
+    async def _resolve_keyword_ids(keywords: Optional[str]) -> str:
+        if not keywords:
+            return ""
+
+        ids: List[str] = []
+        for keyword in [part.strip() for part in keywords.split(",") if part.strip()][:5]:
+            try:
+                kw_search = await TMDBService._fetch("/search/keyword", {"query": keyword})
+                kw_results = kw_search.get("results", [])
+                if kw_results:
+                    ids.append(str(kw_results[0]["id"]))
+            except Exception as e:
+                print(f"[TMDB KEYWORD LOOKUP ERROR] {keyword}: {e}")
+        return ",".join(ids)
+
+    @staticmethod
+    async def _fetch_jikan_anime(
+        keywords: Optional[str],
+        min_rating: float,
+        page: int,
+    ):
+        query = " ".join([part.strip() for part in (keywords or "").split(",") if part.strip()]) or "anime"
+        url = "https://api.jikan.moe/v4/anime"
+        params = {
+            "q": query,
+            "page": page,
+            "limit": 20,
+            "order_by": "score",
+            "sort": "desc",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=12.0) as client:
+                response = await client.get(url, params=params)
+                response.raise_for_status()
+                data = response.json()
+            results = [
+                TMDBService._normalize_anime(item)
+                for item in data.get("data", [])
+                if float(item.get("score") or 0) >= min_rating
+            ]
+            return results
+        except Exception as e:
+            print(f"[JIKAN SEARCH ERROR] {e}")
+            return []
+
+    @staticmethod
+    async def search_advanced(
+        content_type: str = "movie",
+        min_rating: float = 0.0,
+        genres: Optional[str] = None,
+        decade: Optional[str] = None,
+        keywords: Optional[str] = None,
+        languages: Optional[str] = None,
+        page: int = 1,
+    ):
+        kind = (content_type or "movie").strip().lower()
+
+        if kind == "anime":
+            return await TMDBService._fetch_jikan_anime(
+                keywords=keywords,
+                min_rating=min_rating,
+                page=page,
+            )
+
+        endpoint = "/discover/tv" if kind == "tv" else "/discover/movie"
+        params: Dict[str, Any] = {
+            "include_adult": "false",
+            "page": max(page, 1),
+            "sort_by": "popularity.desc",
+        }
+
+        if min_rating > 0:
+            params["vote_average.gte"] = min_rating
+
+        if genres:
+            genre_parts = [part.strip() for part in genres.split(",") if part.strip()]
+            if genre_parts:
+                params["with_genres"] = ",".join(genre_parts)
+
+        language_parts = [part.strip() for part in (languages or "").split(",") if part.strip()]
+        if language_parts and "any" not in [part.lower() for part in language_parts]:
+            params["with_original_language"] = "|".join(language_parts)
+
+        TMDBService._apply_decade(params, decade, kind)
+
+        if keywords:
+            keyword_ids = await TMDBService._resolve_keyword_ids(keywords)
+            if keyword_ids:
+                params["with_keywords"] = keyword_ids
+
+        if kind == "movie" and "99" in (params.get("with_genres") or "").split(","):
+            params["sort_by"] = "vote_average.desc"
+
+        try:
+            data = await TMDBService._fetch(endpoint, params)
+            results = data.get("results", [])
+
+            if kind == "tv":
+                return [TMDBService._normalize_tv(item) for item in results]
+
+            normalized = [TMDBService._normalize(item, "Advanced Search") for item in results]
+            return await TMDBService._enhance_results(normalized)
+        except Exception as e:
+            print(f"[TMDB ADVANCED SEARCH ERROR] {e}")
+            return []
 
     @staticmethod
     async def get_anime_movies():

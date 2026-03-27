@@ -1,9 +1,13 @@
-import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'dart:ui';
+
+import 'package:flutter/material.dart';
 import 'package:flutter_card_swiper/flutter_card_swiper.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import '../movie_detail_screen.dart'; // Import from root lib
+import 'package:http/http.dart' as http;
+
+import '../movie_detail_screen.dart';
+import '../services/api_service.dart';
+import '../services/storage_service.dart';
 
 class VibeCheckScreen extends StatefulWidget {
   const VibeCheckScreen({super.key});
@@ -15,25 +19,24 @@ class VibeCheckScreen extends StatefulWidget {
 class _VibeCheckScreenState extends State<VibeCheckScreen> {
   final TextEditingController _searchController = TextEditingController();
   final CardSwiperController _swiperController = CardSwiperController();
+  final StorageService _storageService = StorageService();
 
   bool _isLoading = false;
   bool _isResultView = false;
   List<dynamic> _searchResults = [];
-  Map<String, dynamic> _vibeMetadata = {}; // New storage for AI insights
+  Map<String, dynamic> _vibeMetadata = {};
   List<String> _recentSearches = [];
 
   final List<String> _vibeSuggestions = [
-    "I want to cry tonight",
-    "I had a bad day cheer me up",
+    'I want to cry tonight',
+    'I had a bad day cheer me up',
     "I'm very happy suggest action movies",
-    "Date night movie suggestions",
-    "I want something dark and intense",
-    "Show me cult classic movies",
-    "I want anime adventures",
-    "Give me motivational films",
+    'Date night movie suggestions',
+    'I want something dark and intense',
+    'Show me cult classic movies',
+    'I want anime adventures',
+    'Give me motivational films',
   ];
-
-  final String _baseUrl = "http://10.238.129.173:8000";
 
   @override
   void initState() {
@@ -49,100 +52,119 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
     super.dispose();
   }
 
-  // Persistance Logic
   Future<void> _loadRecentSearches() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _recentSearches = prefs.getStringList('recent_searches') ?? [];
-    });
+    final searches = await _storageService.getRecentSearches();
+    if (!mounted) return;
+    setState(() => _recentSearches = searches);
   }
 
   Future<void> _saveSearch(String query) async {
-    if (query.trim().isEmpty) return;
-    final prefs = await SharedPreferences.getInstance();
-    List<String> history = prefs.getStringList('recent_searches') ?? [];
-
-    // Remove if exists to move to top, limit to 6
-    history.remove(query);
-    history.insert(0, query);
-    if (history.length > 6) history = history.sublist(0, 6);
-
-    await prefs.setStringList('recent_searches', history);
-    setState(() => _recentSearches = history);
+    await _storageService.saveRecentSearch(query);
+    await _loadRecentSearches();
   }
 
   Future<void> _performVibeSearch(String query) async {
-    if (query.isEmpty) return;
+    final String trimmedQuery = query.trim();
+    if (trimmedQuery.isEmpty) return;
     FocusScope.of(context).unfocus();
-    _saveSearch(query);
+    await _saveSearch(trimmedQuery);
 
     setState(() {
       _isLoading = true;
       _isResultView = true;
       _searchResults = [];
+      _vibeMetadata = {};
     });
 
     try {
       final response = await http
-          .get(Uri.parse("$_baseUrl/api/v1/search/vibe?query=$query"))
-          .timeout(const Duration(seconds: 25));
+          .get(
+            Uri.parse(
+              '${ApiService.baseUrl}/search/vibe?query=${Uri.encodeQueryComponent(trimmedQuery)}',
+            ),
+          )
+          .timeout(const Duration(seconds: 60));
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (mounted) {
-          setState(() {
-            // New structure: { "movies": [...], "metadata": {...} }
-            if (data is Map) {
-              _searchResults = data['movies'] ?? [];
-              _vibeMetadata = data['metadata'] ?? {};
-            } else {
-              _searchResults = data; // Fallback
-            }
-            _isLoading = false;
-          });
+      if (response.statusCode != 200) {
+        throw Exception('Failed to load movies: ${response.statusCode}');
+      }
+
+      final dynamic data = json.decode(response.body);
+      if (!mounted) return;
+      setState(() {
+        if (data is Map<String, dynamic>) {
+          _searchResults = data['movies'] as List<dynamic>? ?? <dynamic>[];
+          _vibeMetadata = data['metadata'] as Map<String, dynamic>? ?? {};
+        } else if (data is List) {
+          _searchResults = data;
         }
-      }
+        _isLoading = false;
+      });
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _isResultView = false;
-        });
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text("Connection Lost: $e")));
-      }
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _isResultView = false;
+      });
+      final errorText = e.toString();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            errorText.toLowerCase().contains('500')
+                ? 'Server error. Please try again in a moment.'
+                : errorText.toLowerCase().contains('timeout')
+                    ? 'Request timed out. AI search may take a moment.'
+                    : 'Connection lost: $errorText',
+          ),
+          duration: const Duration(seconds: 4),
+        ),
+      );
     }
   }
 
-  //   void _playTrailer(String? trailerKey) {
-  //     if (trailerKey == null || trailerKey.isEmpty) {
-  //       ScaffoldMessenger.of(context).showSnackBar(
-  //         const SnackBar(content: Text("Trailer not available for this movie.")),
-  //       );
-  //       return;
-  //     }
-  //
-  //     showDialog(
-  //       context: context,
-  //       builder: (context) => Dialog(
-  //         backgroundColor: Colors.black,
-  //         insetPadding: const EdgeInsets.all(10),
-  //         child: YoutubePlayer(
-  //           controller: YoutubePlayerController(
-  //             initialVideoId: trailerKey,
-  //             flags: const YoutubePlayerFlags(autoPlay: true, mute: false),
-  //           ),
-  //           showVideoProgressIndicator: true,
-  //         ),
-  //       ),
-  //     );
-  //   }
+  Widget _buildBottomNav() {
+    const navItems = [
+      BottomNavigationBarItem(
+        icon: Icon(Icons.home_filled),
+        label: 'Home',
+      ),
+      BottomNavigationBarItem(
+        icon: Icon(Icons.search_rounded),
+        label: 'Search',
+      ),
+      BottomNavigationBarItem(
+        icon: Icon(Icons.favorite),
+        label: 'Library',
+      ),
+    ];
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+        child: Container(
+          color: const Color(0xFF121212).withOpacity(0.7),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: BottomNavigationBar(
+            elevation: 0,
+            backgroundColor: Colors.transparent,
+            currentIndex: 0,
+            onTap: (i) => Navigator.pop(context, i),
+            selectedItemColor: Colors.purpleAccent,
+            unselectedItemColor: Colors.white30,
+            showSelectedLabels: true,
+            showUnselectedLabels: true,
+            type: BottomNavigationBarType.fixed,
+            items: navItems,
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
+      bottomNavigationBar: _isLoading ? null : _buildBottomNav(),
       body: Stack(
         children: [
           _buildBackgroundGradient(),
@@ -152,7 +174,6 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
     );
   }
 
-  // --- VIEW 1: LANDING VIEW ---
   Widget _buildLandingView() {
     return SafeArea(
       child: SingleChildScrollView(
@@ -160,13 +181,24 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // HEADING
-            const Row(
+            Row(
               children: [
-                Icon(Icons.auto_awesome, color: Colors.purpleAccent, size: 28),
-                SizedBox(width: 10),
-                Text(
-                  "Vibe Check",
+                IconButton(
+                  icon: const Icon(
+                    Icons.arrow_back_ios_new,
+                    color: Colors.white70,
+                    size: 22,
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                const Icon(
+                  Icons.auto_awesome,
+                  color: Colors.purpleAccent,
+                  size: 28,
+                ),
+                const SizedBox(width: 10),
+                const Text(
+                  'Vibe Check',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 28,
@@ -177,20 +209,17 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
             ),
             const SizedBox(height: 8),
             const Text(
-              "Describe your mood or pick a vibe below",
+              'Describe your mood or pick a vibe below',
               style: TextStyle(color: Colors.white30, fontSize: 14),
             ),
-
             const SizedBox(height: 25),
-
-            // SEARCH BAR AT TOP
             TextField(
               controller: _searchController,
               autofocus: false,
               style: const TextStyle(color: Colors.white),
               onSubmitted: _performVibeSearch,
               decoration: InputDecoration(
-                hintText: "e.g. Rainy day in Tokyo...",
+                hintText: 'e.g. Rainy day in Tokyo...',
                 hintStyle: const TextStyle(color: Colors.white12),
                 filled: true,
                 fillColor: Colors.white.withOpacity(0.05),
@@ -216,12 +245,10 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
                 ),
               ),
             ),
-
-            // RECENT SEARCHES UNDER BAR
             if (_recentSearches.isNotEmpty) ...[
               const SizedBox(height: 25),
               const Text(
-                "Recent",
+                'Recent',
                 style: TextStyle(
                   color: Colors.white54,
                   fontWeight: FontWeight.bold,
@@ -241,12 +268,9 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
                 ),
               ),
             ],
-
             const SizedBox(height: 40),
-
-            // VIBE SUGGESTIONS
             const Text(
-              "Suggested Vibes",
+              'Suggested Vibes',
               style: TextStyle(
                 color: Colors.white54,
                 fontWeight: FontWeight.bold,
@@ -338,36 +362,40 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
     );
   }
 
-  // --- VIEW 2: SWIPER VIEW ---
   Widget _buildSwiperView() {
     if (_isLoading) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Character animation (Dog)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(100),
-              child: Image.network(
-                "https://i.giphy.com/media/v1.Y2lkPTc5MGI3NjExNHJtZndueHJ6ZndueHJ6ZndueHJ6ZndueHJ6ZndueHJ6ZndueHJ6JmVwPXYxX2ludGVybmFsX2dpZl9ieV9pZCZjdD1n/3o7WIYlXJ9RkM3fOms/giphy.gif",
-                height: 150,
-                width: 150,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => const Icon(
-                  Icons.pets,
-                  color: Colors.purpleAccent,
-                  size: 80,
-                ),
+            Container(
+              width: 92,
+              height: 92,
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.05),
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.purpleAccent.withOpacity(0.25)),
+              ),
+              child: const Icon(
+                Icons.auto_awesome,
+                color: Colors.purpleAccent,
+                size: 42,
               ),
             ),
             const SizedBox(height: 20),
+            const SizedBox(
+              width: 36,
+              height: 36,
+              child: CircularProgressIndicator(color: Colors.purpleAccent),
+            ),
+            const SizedBox(height: 20),
             const Text(
-              "Sniffing out your vibe...",
+              'Tuning into your vibe...',
               style: TextStyle(
                 color: Colors.white70,
                 fontSize: 16,
                 fontWeight: FontWeight.w500,
-                letterSpacing: 1.2,
+                letterSpacing: 1.1,
               ),
             ),
           ],
@@ -381,13 +409,13 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const Text(
-              "No movies found for that vibe.",
+              'No movies found for that vibe.',
               style: TextStyle(color: Colors.white54),
             ),
             TextButton(
               onPressed: () => setState(() => _isResultView = false),
               child: const Text(
-                "Try Again",
+                'Try Again',
                 style: TextStyle(color: Colors.purpleAccent),
               ),
             ),
@@ -398,16 +426,13 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
 
     return Stack(
       children: [
-        // The Swiper - Repositioned with more top gap
         Positioned(
-          top: 130, // Increased from 100 for more breathing room
+          top: 130,
           left: 0,
           right: 0,
           child: Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxHeight: 480,
-              ), // Adjusted size
+              constraints: const BoxConstraints(maxHeight: 480),
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 25),
                 child: AspectRatio(
@@ -423,9 +448,9 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
                     ),
                     onSwipe: (int prev, int? curr, CardSwiperDirection dir) {
                       if (dir == CardSwiperDirection.right) {
-                        _showStatus("Saved to Watchlist 💚");
+                        _showStatus('Saved to Watchlist');
                       } else if (dir == CardSwiperDirection.left) {
-                        _showStatus("Rejected 💔");
+                        _showStatus('Rejected');
                       }
                       return true;
                     },
@@ -437,11 +462,7 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
             ),
           ),
         ),
-
-        // NEW: Vibe Insight Panel at the bottom
         Positioned(bottom: 30, left: 20, right: 20, child: _buildVibeInsight()),
-
-        // UI Overlays
         SafeArea(
           child: Column(
             children: [
@@ -454,14 +475,11 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     IconButton(
-                      icon: const Icon(
-                        Icons.arrow_back_ios,
-                        color: Colors.white,
-                      ),
+                      icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
                       onPressed: () {
                         setState(() {
                           _isResultView = false;
-                          _vibeSuggestions.shuffle(); // Shuffle on return
+                          _vibeSuggestions.shuffle();
                         });
                       },
                     ),
@@ -504,7 +522,7 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
               ),
               const SizedBox(width: 8),
               Text(
-                "Vibe Insight",
+                'Vibe Insight',
                 style: TextStyle(
                   color: Colors.white.withOpacity(0.4),
                   fontSize: 12,
@@ -519,9 +537,9 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
             spacing: 8,
             runSpacing: 8,
             children: [
-              _buildInsightTag("Mood: $mood", Colors.blueAccent),
-              _buildInsightTag("Tone: $tone", Colors.orangeAccent),
-              for (var kw in keywords)
+              _buildInsightTag('Mood: $mood', Colors.blueAccent),
+              _buildInsightTag('Tone: $tone', Colors.orangeAccent),
+              for (final kw in keywords)
                 _buildInsightTag(
                   kw.toString(),
                   Colors.purpleAccent.withOpacity(0.6),
@@ -552,22 +570,23 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
     );
   }
 
-  // Removed _buildTopSegments as requested
-
   Widget _buildMovieCard(dynamic movie) {
     final posterPath = movie['poster_path'];
     final imageUrl = posterPath != null
-        ? "https://image.tmdb.org/t/p/w780$posterPath"
-        : "https://via.placeholder.com/780x1170?text=No+Poster";
+        ? 'https://image.tmdb.org/t/p/w780$posterPath'
+        : 'https://via.placeholder.com/780x1170?text=No+Poster';
 
     return GestureDetector(
-      onTap: () {
-        Navigator.push(
+      onTap: () async {
+        final tab = await Navigator.push<int>(
           context,
           MaterialPageRoute(
             builder: (context) => MovieDetailScreen(movie: movie),
           ),
         );
+        if (tab != null && context.mounted) {
+          Navigator.pop(context, tab);
+        }
       },
       child: Container(
         decoration: BoxDecoration(
@@ -587,7 +606,6 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
               Positioned.fill(
                 child: Image.network(imageUrl, fit: BoxFit.cover),
               ),
-              // Gradient Overlay
               Positioned.fill(
                 child: Container(
                   decoration: BoxDecoration(
@@ -603,7 +621,6 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
                   ),
                 ),
               ),
-              // Movie Info
               Positioned(
                 bottom: 25,
                 left: 20,
@@ -660,7 +677,6 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
                       ],
                     ),
                     const SizedBox(height: 15),
-                    // INTEGRATED ACTION BUTTONS INSIDE CARD
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
@@ -673,9 +689,8 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
                         _buildIntegratedButton(
                           Icons.favorite,
                           Colors.greenAccent,
-                          () => _swiperController.swipe(
-                            CardSwiperDirection.right,
-                          ),
+                          () =>
+                              _swiperController.swipe(CardSwiperDirection.right),
                         ),
                       ],
                     ),
@@ -707,8 +722,6 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
       ),
     );
   }
-
-  // Removed old _buildBottomControls and _buildActionButton as they are now integrated
 
   void _showStatus(String msg) {
     ScaffoldMessenger.of(context).clearSnackBars();

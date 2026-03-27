@@ -1,5 +1,5 @@
 name: kino_mobile
-description: "A new Flutter project."
+description: "Kino — AI-Powered Movie Discovery"
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -33,7 +33,7 @@ flutter:
   assets:
     - assets/images/
   
-  flutter_launcher_icons:
+flutter_launcher_icons:
   android: true
   ios: false
   image_path: "assets/images/kino_icon.png"

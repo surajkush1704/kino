@@ -15,7 +15,7 @@ class ApiService {
 
     // Default to localhost so Android emulator and USB-debugged devices
     // work with `adb reverse tcp:8000 tcp:8000`.
-    return 'http://127.0.0.1:8000/api/v1';
+    return 'https://kino-backend-i4ak.onrender.com/api/v1';
   }
 
   static Future<List<dynamic>> getTrendingMovies() async {
@@ -53,7 +53,9 @@ class ApiService {
       if (response.statusCode == 200) {
         return json.decode(response.body);
       } else {
-        throw Exception('Failed to load recommendations: ${response.statusCode}');
+        throw Exception(
+          'Failed to load recommendations: ${response.statusCode}',
+        );
       }
     } catch (e) {
       throw Exception('Error loading recommendations: $e');

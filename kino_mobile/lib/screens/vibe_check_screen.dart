@@ -26,6 +26,7 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
   List<dynamic> _searchResults = [];
   Map<String, dynamic> _vibeMetadata = {};
   List<String> _recentSearches = [];
+  String _lastQuery = '';
 
   final List<String> _vibeSuggestions = [
     'I want to cry tonight',
@@ -74,6 +75,7 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
       _isResultView = true;
       _searchResults = [];
       _vibeMetadata = {};
+      _lastQuery = trimmedQuery;
     });
 
     try {
@@ -212,6 +214,8 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
               'Describe your mood or pick a vibe below',
               style: TextStyle(color: Colors.white30, fontSize: 14),
             ),
+            const SizedBox(height: 20),
+            _buildMoodHeroPanel(),
             const SizedBox(height: 25),
             TextField(
               controller: _searchController,
@@ -341,6 +345,82 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
     );
   }
 
+  Widget _buildMoodHeroPanel() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.purpleAccent.withOpacity(0.18),
+            Colors.redAccent.withOpacity(0.08),
+            Colors.white.withOpacity(0.04),
+          ],
+        ),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(
+                  Icons.auto_awesome,
+                  color: Colors.purpleAccent,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'From moods to midnight obsessions',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Tell Kino how tonight feels and it will build a stack of movies that match the emotional energy.',
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.72),
+              fontSize: 13,
+              height: 1.5,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Map<String, dynamic> _movieToStorageEntry(dynamic movie) {
+    final Map<String, dynamic> safeMovie = Map<String, dynamic>.from(
+      movie is Map ? movie : <String, dynamic>{},
+    );
+    return <String, dynamic>{
+      'id': safeMovie['id'],
+      'title': safeMovie['title'],
+      'poster_path': safeMovie['poster_path'],
+      'vote_average': safeMovie['vote_average'],
+      'release_date': safeMovie['release_date'],
+      'overview': safeMovie['overview'],
+      'genres': safeMovie['genres'] ?? <dynamic>[],
+      'rating': safeMovie['rating'],
+    };
+  }
+
   Widget _buildHistoryBox(String query) {
     return GestureDetector(
       onTap: () {
@@ -448,6 +528,9 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
                     ),
                     onSwipe: (int prev, int? curr, CardSwiperDirection dir) {
                       if (dir == CardSwiperDirection.right) {
+                        _storageService.addToWatchlist(
+                          _movieToStorageEntry(_searchResults[prev]),
+                        );
                         _showStatus('Saved to Watchlist');
                       } else if (dir == CardSwiperDirection.left) {
                         _showStatus('Rejected');
@@ -471,22 +554,53 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
                   horizontal: 20,
                   vertical: 10,
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                child: Column(
                   children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back_ios, color: Colors.white),
-                      onPressed: () {
-                        setState(() {
-                          _isResultView = false;
-                          _vibeSuggestions.shuffle();
-                        });
-                      },
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        IconButton(
+                          icon:
+                              const Icon(Icons.arrow_back_ios, color: Colors.white),
+                          onPressed: () {
+                            setState(() {
+                              _isResultView = false;
+                              _vibeSuggestions.shuffle();
+                            });
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.undo, color: Colors.white60),
+                          onPressed: () => _swiperController.undo(),
+                        ),
+                      ],
                     ),
-                    IconButton(
-                      icon: const Icon(Icons.undo, color: Colors.white60),
-                      onPressed: () => _swiperController.undo(),
-                    ),
+                    if (_lastQuery.isNotEmpty)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Container(
+                          margin: const EdgeInsets.only(top: 6),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.08),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: Colors.white10),
+                          ),
+                          child: Text(
+                            _lastQuery,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -504,11 +618,18 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
         (_vibeMetadata['keywords'] as List?)?.take(3).toList() ?? [];
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.03),
+        color: Colors.black.withOpacity(0.32),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Colors.white.withOpacity(0.08)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.25),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -740,7 +861,7 @@ class _VibeCheckScreenState extends State<VibeCheckScreen> {
         gradient: RadialGradient(
           center: Alignment(-0.8, -0.8),
           radius: 1.5,
-          colors: [Color(0xFF2A1639), Color(0xFF121212)],
+          colors: [Color(0xFF3A1D52), Color(0xFF121212)],
         ),
       ),
     );

@@ -26,15 +26,17 @@ class _LibraryScreenState extends State<LibraryScreen>
   late final TabController _tabController;
   List<Map<String, dynamic>> _watchlist = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _watched = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _liked = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _recentlyBrowsed = <Map<String, dynamic>>[];
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(
-      length: 2,
+      length: 4,
       vsync: this,
-      initialIndex: widget.initialTabIndex.clamp(0, 1),
+      initialIndex: widget.initialTabIndex.clamp(0, 3),
     );
     _loadLibrary();
   }
@@ -43,7 +45,7 @@ class _LibraryScreenState extends State<LibraryScreen>
   void didUpdateWidget(covariant LibraryScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.initialTabIndex != widget.initialTabIndex) {
-      _tabController.animateTo(widget.initialTabIndex.clamp(0, 1));
+      _tabController.animateTo(widget.initialTabIndex.clamp(0, 3));
     }
   }
 
@@ -58,12 +60,16 @@ class _LibraryScreenState extends State<LibraryScreen>
       final results = await Future.wait<List<Map<String, dynamic>>>([
         _storageService.getWatchlist(),
         _storageService.getWatched(),
+        _storageService.getLiked(),
+        _storageService.getRecentlyBrowsed(),
       ]);
 
       if (!mounted) return;
       setState(() {
         _watchlist = results[0];
         _watched = results[1];
+        _liked = results[2];
+        _recentlyBrowsed = results[3];
         _isLoading = false;
       });
     } catch (_) {
@@ -71,6 +77,8 @@ class _LibraryScreenState extends State<LibraryScreen>
       setState(() {
         _watchlist = <Map<String, dynamic>>[];
         _watched = <Map<String, dynamic>>[];
+        _liked = <Map<String, dynamic>>[];
+        _recentlyBrowsed = <Map<String, dynamic>>[];
         _isLoading = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
@@ -80,7 +88,7 @@ class _LibraryScreenState extends State<LibraryScreen>
   }
 
   Future<void> _removeMovie({
-    required bool isWatchlist,
+    required String listType,
     required Map<String, dynamic> movie,
   }) async {
     final dynamic idValue = movie['id'];
@@ -88,15 +96,29 @@ class _LibraryScreenState extends State<LibraryScreen>
     if (movieId == null) return;
 
     try {
-      if (isWatchlist) {
-        await _storageService.removeFromWatchlist(movieId);
-      } else {
-        await _storageService.removeFromWatched(movieId);
+      switch (listType) {
+        case 'watchlist':
+          await _storageService.removeFromWatchlist(movieId);
+          break;
+        case 'watched':
+          await _storageService.removeFromWatched(movieId);
+          break;
+        case 'liked':
+          await _storageService.removeFromLiked(movieId);
+          break;
+        case 'recent':
+          await _storageService.removeFromRecentlyBrowsed(movieId);
+          break;
       }
 
       if (!mounted) return;
       setState(() {
-        final target = isWatchlist ? _watchlist : _watched;
+        final target = switch (listType) {
+          'watchlist' => _watchlist,
+          'watched' => _watched,
+          'liked' => _liked,
+          _ => _recentlyBrowsed,
+        };
         target.removeWhere((item) => item['id'] == movieId);
       });
 
@@ -104,9 +126,14 @@ class _LibraryScreenState extends State<LibraryScreen>
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            isWatchlist ? 'Removed from Watchlist' : 'Removed from Watched',
+            switch (listType) {
+              'watchlist' => 'Removed from Watchlist',
+              'watched' => 'Removed from Watched',
+              'liked' => 'Removed from Liked Movies',
+              _ => 'Removed from Recently Browsed',
+            },
           ),
-          duration: const Duration(milliseconds: 700),
+          duration: const Duration(milliseconds: 800),
         ),
       );
     } catch (_) {
@@ -165,7 +192,7 @@ class _LibraryScreenState extends State<LibraryScreen>
 
   Widget _buildMovieCard({
     required Map<String, dynamic> movie,
-    required bool isWatchlist,
+    required String listType,
   }) {
     final posterPath = movie['poster_path'];
     final String imageUrl = posterPath != null && '$posterPath'.isNotEmpty
@@ -185,6 +212,13 @@ class _LibraryScreenState extends State<LibraryScreen>
           color: const Color(0xFF1A1A1A),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: Colors.white10),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.18),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
         ),
         child: InkWell(
           borderRadius: BorderRadius.circular(20),
@@ -248,11 +282,13 @@ class _LibraryScreenState extends State<LibraryScreen>
                           ),
                           IconButton(
                             onPressed: () => _removeMovie(
-                              isWatchlist: isWatchlist,
+                              listType: listType,
                               movie: movie,
                             ),
-                            icon: const Icon(
-                              Icons.delete_outline,
+                            icon: Icon(
+                              listType == 'recent'
+                                  ? Icons.history_toggle_off_rounded
+                                  : Icons.delete_outline,
                               color: Colors.white60,
                             ),
                             tooltip: 'Remove',
@@ -324,15 +360,33 @@ class _LibraryScreenState extends State<LibraryScreen>
 
   Widget _buildTabView({
     required List<Map<String, dynamic>> movies,
-    required bool isWatchlist,
+    required String listType,
   }) {
+    final Map<String, ({IconData icon, String subtitle})> emptyConfig =
+        <String, ({IconData icon, String subtitle})>{
+      'watchlist': (
+        icon: Icons.movie_outlined,
+        subtitle: 'Add movies to watch later',
+      ),
+      'watched': (
+        icon: Icons.check_circle,
+        subtitle: 'Mark movies as watched',
+      ),
+      'liked': (
+        icon: Icons.favorite_border,
+        subtitle: 'Tap the heart on movies you love',
+      ),
+      'recent': (
+        icon: Icons.history_rounded,
+        subtitle: 'Movies you open will appear here',
+      ),
+    };
+
     final Widget child = movies.isEmpty
         ? _buildEmptyState(
-            icon: isWatchlist ? Icons.movie_outlined : Icons.check_circle,
+            icon: emptyConfig[listType]!.icon,
             title: 'Nothing here yet',
-            subtitle: isWatchlist
-                ? 'Add movies to watch later'
-                : 'Mark movies as watched',
+            subtitle: emptyConfig[listType]!.subtitle,
           )
         : ListView.builder(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -341,7 +395,7 @@ class _LibraryScreenState extends State<LibraryScreen>
             itemBuilder: (context, index) {
               return _buildMovieCard(
                 movie: movies[index],
-                isWatchlist: isWatchlist,
+                listType: listType,
               );
             },
           );
@@ -353,9 +407,7 @@ class _LibraryScreenState extends State<LibraryScreen>
       child: AnimatedSwitcher(
         duration: const Duration(milliseconds: 250),
         child: KeyedSubtree(
-          key: ValueKey(
-            '${isWatchlist ? 'watchlist' : 'watched'}-${movies.length}',
-          ),
+          key: ValueKey('$listType-${movies.length}'),
           child: child,
         ),
       ),
@@ -370,7 +422,13 @@ class _LibraryScreenState extends State<LibraryScreen>
         backgroundColor: const Color(0xFF121212),
         elevation: 0,
         leading: IconButton(
-          onPressed: widget.onBackToPrevious,
+          onPressed: () {
+            if (widget.onBackToPrevious != null) {
+              widget.onBackToPrevious!.call();
+              return;
+            }
+            Navigator.of(context).maybePop();
+          },
           icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white70),
         ),
         title: const Text(
@@ -382,12 +440,15 @@ class _LibraryScreenState extends State<LibraryScreen>
         ),
         bottom: TabBar(
           controller: _tabController,
+          isScrollable: true,
           indicatorColor: Colors.purpleAccent,
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white54,
           tabs: const [
             Tab(text: 'Watchlist'),
             Tab(text: 'Watched'),
+            Tab(text: 'Liked'),
+            Tab(text: 'Recent'),
           ],
         ),
       ),
@@ -398,8 +459,10 @@ class _LibraryScreenState extends State<LibraryScreen>
           : TabBarView(
               controller: _tabController,
               children: [
-                _buildTabView(movies: _watchlist, isWatchlist: true),
-                _buildTabView(movies: _watched, isWatchlist: false),
+                _buildTabView(movies: _watchlist, listType: 'watchlist'),
+                _buildTabView(movies: _watched, listType: 'watched'),
+                _buildTabView(movies: _liked, listType: 'liked'),
+                _buildTabView(movies: _recentlyBrowsed, listType: 'recent'),
               ],
             ),
     );

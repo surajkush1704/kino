@@ -24,6 +24,7 @@ class MovieDetailScreen extends StatefulWidget {
 class _MovieDetailScreenState extends State<MovieDetailScreen> {
   Map<String, dynamic>? _fullDetails;
   bool _isLoading = true;
+  bool _isRestrictedContent = false;
   late final int _selectedIndex;
   final StorageService _storageService = StorageService();
 
@@ -92,6 +93,28 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
     }
   }
 
+  bool _isMatureRating(String? rating) {
+    final String normalized = (rating ?? '').trim().toUpperCase();
+    return normalized == 'R' ||
+        normalized == 'NC-17' ||
+        normalized == 'A' ||
+        normalized == '18+' ||
+        normalized == 'TV-MA' ||
+        normalized == 'X';
+  }
+
+  Future<void> _syncRecentlyBrowsedAndAccess() async {
+    final Map<String, dynamic> entry = _movieToStorageEntry();
+    await _storageService.addToRecentlyBrowsed(entry);
+
+    final bool canAccessMature = await _storageService.canAccessMatureContent();
+    final bool restricted = _isMatureRating(entry['rating']?.toString()) &&
+        !canAccessMature;
+
+    if (!mounted) return;
+    setState(() => _isRestrictedContent = restricted);
+  }
+
   Future<void> _toggleWatchlist() async {
     final int? movieId = _movieIdFrom(widget.movie);
     if (movieId == null) return;
@@ -132,6 +155,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
           _fullDetails = json.decode(response.body);
           _isLoading = false;
         });
+        await _syncRecentlyBrowsedAndAccess();
+      } else {
+        setState(() => _isLoading = false);
       }
     } catch (e) {
       print("Error loading details: $e");
@@ -331,7 +357,9 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.all(20.0),
-                    child: Column(
+                    child: _isRestrictedContent
+                        ? _buildRestrictedNotice()
+                        : Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
@@ -877,6 +905,64 @@ class _MovieDetailScreenState extends State<MovieDetailScreen> {
               color: Colors.white,
               fontWeight: FontWeight.bold,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRestrictedNotice() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.redAccent.withOpacity(0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(
+                Icons.lock_outline_rounded,
+                color: Colors.redAccent,
+              ),
+              SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  '18+ content locked',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          const Text(
+            'This title is rated for mature audiences. Sign in and enable 18+ access from your profile to view A-rated or R-rated movies.',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 14,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 18),
+          OutlinedButton.icon(
+            onPressed: () => Navigator.pop(context),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.white,
+              side: const BorderSide(color: Colors.white24),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            icon: const Icon(Icons.arrow_back_ios_new),
+            label: const Text('Go Back'),
           ),
         ],
       ),

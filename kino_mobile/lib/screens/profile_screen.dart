@@ -2,6 +2,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../movie_detail_screen.dart';
 import '../services/auth_service.dart';
 import '../services/storage_service.dart';
 import 'auth/login_screen.dart';
@@ -25,26 +26,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _watchlistCount = 0;
   int _likedCount = 0;
   bool _nsfwEnabled = false;
+  bool _adultVerified = false;
+  List<Map<String, dynamic>> _recentlyBrowsed = <Map<String, dynamic>>[];
 
   @override
   void initState() {
     super.initState();
-    _loadStats();
+    _loadProfileData();
   }
 
-  Future<void> _loadStats() async {
+  Future<void> _loadProfileData() async {
     final results = await Future.wait<dynamic>([
       _storageService.getWatched(),
       _storageService.getWatchlist(),
       _storageService.getLiked(),
       _storageService.getNsfwEnabled(),
+      _storageService.getAdultVerified(),
+      _storageService.getRecentlyBrowsed(),
     ]);
+
     if (!mounted) return;
     setState(() {
       _watchedCount = (results[0] as List).length;
       _watchlistCount = (results[1] as List).length;
       _likedCount = (results[2] as List).length;
       _nsfwEnabled = results[3] as bool;
+      _adultVerified = results[4] as bool;
+      _recentlyBrowsed = (results[5] as List<Map<String, dynamic>>).take(8).toList();
     });
   }
 
@@ -76,14 +84,67 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return email.split('@').first;
   }
 
+  Future<bool> _confirmAdultAccess() async {
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          title: const Text(
+            'Enable 18+ Access?',
+            style: TextStyle(color: Colors.white),
+          ),
+          content: const Text(
+            'Google sign-in does not provide a reliable age flag here, so please confirm that you are 18 or older before enabling mature-rated movies.',
+            style: TextStyle(color: Colors.white70, height: 1.5),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text(
+                'I am 18+',
+                style: TextStyle(color: Colors.purpleAccent),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    return confirmed ?? false;
+  }
+
   Future<void> _toggleNsfw(bool value) async {
+    final User? user = _authService.getCurrentUser();
+    if (value && user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sign in to enable 18+ content controls'),
+        ),
+      );
+      return;
+    }
+
+    if (value && !_adultVerified) {
+      final bool allowed = await _confirmAdultAccess();
+      if (!allowed) return;
+      await _storageService.setAdultVerified(true);
+      _adultVerified = true;
+    }
+
     await _storageService.setNsfwEnabled(value);
     if (!mounted) return;
     setState(() => _nsfwEnabled = value);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          value ? 'NSFW content enabled' : 'NSFW content disabled',
+          value
+              ? '18+ content enabled for this account'
+              : '18+ content disabled',
         ),
         duration: const Duration(milliseconds: 900),
       ),
@@ -178,10 +239,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildListTile({
     required IconData icon,
     required String title,
-    VoidCallback? onTap,
+    required Color iconColor,
+    required VoidCallback onTap,
     Widget? trailing,
-    Color iconColor = Colors.white70,
-    Color textColor = Colors.white,
   }) {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
@@ -195,7 +255,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         leading: Icon(icon, color: iconColor),
         title: Text(
           title,
-          style: TextStyle(color: textColor, fontWeight: FontWeight.w600),
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         trailing:
             trailing ?? const Icon(Icons.chevron_right, color: Colors.white30),
@@ -203,7 +266,58 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildSettingsRow() {
+  Widget _buildRecentMovieCard(Map<String, dynamic> movie) {
+    final posterPath = movie['poster_path'];
+    final String imageUrl = posterPath != null && '$posterPath'.isNotEmpty
+        ? 'https://image.tmdb.org/t/p/w500$posterPath'
+        : 'https://via.placeholder.com/300x450?text=No+Image';
+
+    return GestureDetector(
+      onTap: () async {
+        await Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => MovieDetailScreen(movie: movie)),
+        );
+        await _loadProfileData();
+      },
+      child: Container(
+        width: 138,
+        margin: const EdgeInsets.only(right: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(18),
+              child: Image.network(
+                imageUrl,
+                height: 180,
+                width: 138,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  height: 180,
+                  width: 138,
+                  color: const Color(0xFF242424),
+                  child: const Icon(Icons.movie_outlined, color: Colors.white30),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              (movie['title'] ?? 'Unknown').toString(),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSettingsRows() {
     return Column(
       children: [
         const Padding(
@@ -212,42 +326,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         _buildListTile(
           icon: Icons.explicit_outlined,
-          title: 'NSFW Content',
+          title: _adultVerified ? '18+ Content Access' : 'Enable 18+ Access',
           iconColor: Colors.purpleAccent,
+          onTap: () => _toggleNsfw(!_nsfwEnabled),
           trailing: Switch(
             value: _nsfwEnabled,
             onChanged: _toggleNsfw,
             activeColor: Colors.purpleAccent,
           ),
-          onTap: () => _toggleNsfw(!_nsfwEnabled),
         ),
-        Container(
-          decoration: BoxDecoration(
-            color: const Color(0xFF1A1A1A),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: Colors.white10),
-          ),
-          child: ListTile(
-            onTap: () async {
-              await Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const SettingsScreen()),
-              );
-              await _loadStats();
-              if (mounted) setState(() {});
-            },
-            leading: const Icon(
-              Icons.settings_outlined,
-              color: Color(0xFFD4AF37),
-            ),
-            title: const Text(
-              'Settings',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            trailing: const Icon(Icons.chevron_right, color: Colors.white30),
-          ),
+        _buildListTile(
+          icon: Icons.settings_outlined,
+          title: 'Settings',
+          iconColor: const Color(0xFFD4AF37),
+          onTap: () async {
+            await Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            );
+            await _loadProfileData();
+          },
         ),
       ],
     );
@@ -256,251 +353,273 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   Widget build(BuildContext context) {
     final user = _authService.getCurrentUser();
-    final isGuest = user == null;
+    final bool isGuest = user == null;
 
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 28, 20, 120),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Profile',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 32,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Center(
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    Container(
-                      width: 120,
-                      height: 120,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        gradient: LinearGradient(
-                          colors: [
-                            Colors.purple.shade900,
-                            Colors.indigo.shade900,
-                          ],
-                        ),
-                      ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        isGuest ? '?' : _authService.getUserInitials(user),
-                        style: GoogleFonts.cinzelDecorative(
-                          color: const Color(0xFFD4AF37),
-                          fontSize: 36,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      right: -2,
-                      bottom: -2,
-                      child: GestureDetector(
-                        onTap: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Avatar customization coming soon!'),
-                            ),
-                          );
-                        },
-                        child: Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.black, width: 2),
-                          ),
-                          child: const Icon(
-                            Icons.camera_alt_outlined,
-                            color: Colors.black87,
-                            size: 18,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-              Center(
-                child: Column(
-                  children: [
-                    Text(
-                      isGuest ? 'Guest User' : _displayName(user),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      isGuest
-                          ? 'Explore Kino without an account'
-                          : (user.email ?? ''),
-                      style: const TextStyle(color: Colors.white54, fontSize: 13),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      isGuest
-                          ? 'Sign in to unlock all features'
-                          : _memberSince(user),
-                      style: const TextStyle(color: Colors.white38, fontSize: 12),
-                    ),
-                  ],
-                ),
-              ),
-              if (isGuest) ...[
-                const SizedBox(height: 20),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.purpleAccent.withOpacity(0.14),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(
-                      color: Colors.purpleAccent.withOpacity(0.3),
-                    ),
+        child: RefreshIndicator(
+          onRefresh: _loadProfileData,
+          color: Colors.purpleAccent,
+          backgroundColor: const Color(0xFF1E1E1E),
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(20, 28, 20, 120),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Profile',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 32,
+                    fontWeight: FontWeight.w900,
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                ),
+                const SizedBox(height: 24),
+                Center(
+                  child: Stack(
+                    clipBehavior: Clip.none,
                     children: [
-                      const Text(
-                        'Sign in to unlock all features',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
+                      Container(
+                        width: 120,
+                        height: 120,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            colors: [
+                              Colors.purple.shade900,
+                              Colors.indigo.shade900,
+                            ],
+                          ),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          isGuest ? '?' : _authService.getUserInitials(user),
+                          style: GoogleFonts.cinzelDecorative(
+                            color: const Color(0xFFD4AF37),
+                            fontSize: 36,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 10),
-                      TextButton(
-                        onPressed: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const LoginScreen(),
+                      Positioned(
+                        right: -2,
+                        bottom: -2,
+                        child: GestureDetector(
+                          onTap: () {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Avatar customization coming soon!'),
+                              ),
+                            );
+                          },
+                          child: Container(
+                            width: 36,
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.black, width: 2),
                             ),
-                          );
-                        },
-                        child: const Text('Go to Login'),
+                            child: const Icon(
+                              Icons.camera_alt_outlined,
+                              color: Colors.black87,
+                              size: 18,
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                   ),
                 ),
-              ],
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  _buildStatsCard(
-                    'Watched',
-                    _watchedCount,
-                    () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const LibraryScreen(initialTabIndex: 1),
+                const SizedBox(height: 20),
+                Center(
+                  child: Column(
+                    children: [
+                      Text(
+                        isGuest ? 'Guest User' : _displayName(user),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
                         ),
-                      );
-                    },
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        isGuest
+                            ? 'Explore Kino without an account'
+                            : (user.email ?? ''),
+                        style: const TextStyle(color: Colors.white54, fontSize: 13),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        isGuest
+                            ? 'Sign in to unlock synced library and 18+ controls'
+                            : _memberSince(user),
+                        style: const TextStyle(color: Colors.white38, fontSize: 12),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 10),
-                  _buildStatsCard(
-                    'Watchlist',
-                    _watchlistCount,
-                    () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const LibraryScreen(initialTabIndex: 0),
+                ),
+                if (isGuest) ...[
+                  const SizedBox(height: 20),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.purpleAccent.withOpacity(0.14),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(
+                        color: Colors.purpleAccent.withOpacity(0.3),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Sign in to sync your library online',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
-                      );
-                    },
-                  ),
-                  const SizedBox(width: 10),
-                  _buildStatsCard(
-                    'Liked',
-                    _likedCount,
-                    () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Liked movies tab coming soon'),
+                        const SizedBox(height: 10),
+                        TextButton(
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const LoginScreen(),
+                              ),
+                            );
+                          },
+                          child: const Text('Go to Login'),
                         ),
-                      );
-                    },
+                      ],
+                    ),
                   ),
                 ],
-              ),
-              _buildSectionTitle('My Activity'),
-              _buildListTile(
-                icon: Icons.favorite_border,
-                title: 'Watchlist',
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const LibraryScreen(initialTabIndex: 0),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    _buildStatsCard(
+                      'Watched',
+                      _watchedCount,
+                      () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const LibraryScreen(initialTabIndex: 1),
+                          ),
+                        );
+                      },
                     ),
-                  );
-                },
-              ),
-              _buildListTile(
-                icon: Icons.check_circle_outline,
-                title: 'Watched',
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const LibraryScreen(initialTabIndex: 1),
+                    const SizedBox(width: 10),
+                    _buildStatsCard(
+                      'Watchlist',
+                      _watchlistCount,
+                      () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const LibraryScreen(initialTabIndex: 0),
+                          ),
+                        );
+                      },
                     ),
-                  );
-                },
-              ),
-              _buildListTile(
-                icon: Icons.thumb_up_alt_outlined,
-                title: 'Liked Movies',
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Liked movies tab coming soon')),
-                  );
-                },
-              ),
-              _buildSettingsRow(),
-              _buildSectionTitle(isGuest ? 'Sign In' : 'Sign Out'),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: ElevatedButton(
-                  onPressed: isGuest
-                      ? () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => const LoginScreen(),
-                            ),
-                          );
-                        }
-                      : _confirmSignOut,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor:
-                        isGuest ? Colors.purpleAccent : Colors.redAccent,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                    const SizedBox(width: 10),
+                    _buildStatsCard(
+                      'Liked',
+                      _likedCount,
+                      () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const LibraryScreen(initialTabIndex: 2),
+                          ),
+                        );
+                      },
                     ),
+                  ],
+                ),
+                _buildSectionTitle('Recently Browsed'),
+                if (_recentlyBrowsed.isEmpty)
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(18),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF1A1A1A),
+                      borderRadius: BorderRadius.circular(18),
+                      border: Border.all(color: Colors.white10),
+                    ),
+                    child: const Text(
+                      'Movies you open will appear here.',
+                      style: TextStyle(color: Colors.white54),
+                    ),
+                  )
+                else
+                  Column(
+                    children: [
+                      SizedBox(
+                        height: 230,
+                        child: ListView.builder(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: _recentlyBrowsed.length,
+                          itemBuilder: (context, index) {
+                            return _buildRecentMovieCard(_recentlyBrowsed[index]);
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton(
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) =>
+                                    const LibraryScreen(initialTabIndex: 3),
+                              ),
+                            );
+                          },
+                          child: const Text(
+                            'View full history',
+                            style: TextStyle(color: Colors.purpleAccent),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  child: Text(
-                    isGuest ? 'Sign In' : 'Sign Out',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w800,
+                _buildSettingsRows(),
+                _buildSectionTitle(isGuest ? 'Sign In' : 'Sign Out'),
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: ElevatedButton(
+                    onPressed: isGuest
+                        ? () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const LoginScreen(),
+                              ),
+                            );
+                          }
+                        : _confirmSignOut,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor:
+                          isGuest ? Colors.purpleAccent : Colors.redAccent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                    ),
+                    child: Text(
+                      isGuest ? 'Sign In' : 'Sign Out',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
